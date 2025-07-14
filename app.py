@@ -4,10 +4,10 @@ from bs4 import BeautifulSoup
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QLabel, QPushButton, QLineEdit,
     QListWidget, QListWidgetItem, QMessageBox, QGroupBox, QStackedWidget,
-    QHBoxLayout
+    QHBoxLayout,    QGraphicsDropShadowEffect
 )
-from PyQt6.QtGui import QFont
-from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QFont, QColor, QPalette
+from PyQt6.QtCore import Qt, QPropertyAnimation, QRect, QEasingCurve, QSize, QPointF
 
 class StartPage(QWidget):
     def __init__(self, switch_to_search):
@@ -32,6 +32,36 @@ class StartPage(QWidget):
         layout.addWidget(self.btn_view_all)
 
         self.setLayout(layout)
+        
+        
+        self.setStyleSheet("""
+            QWidget {
+                background: qlineargradient(
+                    spread:pad, x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #1e1e2f, stop:1 #2c2c3e
+                );
+                color: #1e1e2f;
+            }
+
+            QPushButton {
+                background-color: #3f51b5;
+                color: white;
+                border: none;
+                border-radius: 12px;
+                padding: 10px;
+                font-weight: bold;
+                font-size: 15px;
+            }
+
+            QPushButton:hover {
+                background-color: #5c6bc0;
+            }
+
+            QPushButton:disabled {
+                background-color: #cccccc;
+                color: #666666;
+            }
+        """)
 
 class CarSearchApp(QWidget):
     def __init__(self, go_back_callback):
@@ -226,6 +256,41 @@ class AllCarsPage(QWidget):
         self.setFixedSize(700, 550)
         self.go_back_callback = go_back_callback
 
+        # ✨ Setăm stylesheet general
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #1e1e2f;
+                color: #f0f0f0;
+                font-family: 'Segoe UI', sans-serif;
+                font-size: 13px;
+            }
+            QLabel {
+                padding: 3px;
+            }
+            QListWidget {
+                background-color: #2c2c3e;
+            }
+            QListWidget::item {
+                padding: 8px;
+            }
+            QListWidget::item:selected {
+                background-color: #85C1E9; 
+                color: white;              
+                border: none;  
+                outline: none;
+            }         
+            QPushButton {
+                background-color: #3f51b5;
+                color: white;
+                padding: 6px 14px;
+                border-radius: 8px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #303f9f;
+            }
+        """)
+
         self.layout = QVBoxLayout()
         self.setLayout(self.layout)
 
@@ -246,102 +311,125 @@ class AllCarsPage(QWidget):
         self.current_level = "brand"
         self.base_url = "https://www.auto-data.net"
 
+        self.btn_back.clicked.connect(self.on_back_clicked)
+        # 🔧 Etichete detalii tehnice
+        self.label_brand = QLabel()
+        self.label_model = QLabel()
+        self.label_acc = QLabel()
+        self.label_speed = QLabel()
+        self.label_prod = QLabel()
+        self.label_power = QLabel()
+        self.label_weight = QLabel()
+        
         self.load_brands()
+
+
+        for lbl in [
+            self.label_brand, self.label_model, self.label_acc,
+            self.label_speed, self.label_prod, self.label_power, self.label_weight
+        ]:
+            lbl.setFont(QFont("Arial", 11))
+            self.layout.addWidget(lbl)
 
     def show_error(self, message):
         QMessageBox.critical(self, "Eroare", message)
+
+    def on_back_clicked(self):
+            self.reset_page()            
+            self.go_back_callback()     
+
+    def reset_page(self):
+        self.list.clear()          
+        self.stack.clear()           
+        self.current_level = "brand" 
+        self.load_brands()          
+
+    def item_selected(self, item):
+        index = self.list.row(item)
+
+        if self.current_level == "brand":
+            name, link = self.brands[index]
+            self.stack = [(name, link)]
+            self.load_models(link)
+
+        elif self.current_level == "model":
+            name, link = self.models[index]
+            self.stack = self.stack[:1] + [(name, link)]
+            self.load_generations(link)
+
+        elif self.current_level == "generation":
+            name, link = self.generations[index]
+            self.stack = self.stack[:2] + [(name, link)]
+            self.load_motorizations(link)
+
+        elif self.current_level == "variant":
+            name, link = self.motorizations[index]
+            self.stack = self.stack[:3] + [(name, link)]
+            self.afiseaza_detalii(link)
 
     def load_brands(self):
         self.title.setText("Selectează un brand")
         self.list.clear()
         self.current_level = "brand"
         self.stack = []
+        self.brands = []
 
         try:
             r = requests.get(f"{self.base_url}/en/", headers={"User-Agent": "Mozilla/5.0"})
             r.raise_for_status()
 
             soup = BeautifulSoup(r.text, "html.parser")
-            # brandurile sunt in tag-uri <a class="marki_blok">
             brand_links = soup.find_all("a", class_="marki_blok")
             if not brand_links:
-                QMessageBox.warning(self, "Avertisment", "Nu s-au găsit branduri. S-a schimbat structura site-ului.")
+                QMessageBox.warning(self, "Avertisment", "Nu s-au găsit branduri.")
                 return
 
             for brand in brand_links:
-                # numele este in <strong>
                 name_tag = brand.find("strong")
                 name = name_tag.text.strip() if name_tag else brand.text.strip()
                 href = brand.get("href", "")
                 link = self.base_url + href
-                self.stack.append((name, link))
+                self.brands.append((name, link))
                 self.list.addItem(name)
 
         except Exception as e:
             self.show_error(f"Eroare la încărcarea brandurilor:\n{e}")
 
-    def item_selected(self, item):
-        index = self.list.row(item)
-
-        if self.current_level == "brand":
-            name, link = self.stack[index]
-            self.stack = [(name, link)]  # resetăm stiva cu brandul curent
-            self.load_models(link)
-
-        elif self.current_level == "model":
-            name, link = self.stack[index]
-            self.stack = self.stack[:1] + [(name, link)]
-            self.load_generations(link)
-
-        elif self.current_level == "generation":
-            name, link = self.stack[index]
-            self.stack = self.stack[:2] + [(name, link)]
-            self.load_motorizations(link)
-
-        elif self.current_level == "variant":
-            name, link = self.stack[index]
-            self.afiseaza_detalii(link)
 
     def load_models(self, brand_url):
         self.title.setText("Selectează un model")
         self.list.clear()
         self.current_level = "model"
-        self.stack = []
+        self.models = []
 
         try:
             r = requests.get(brand_url, headers={"User-Agent": "Mozilla/5.0"})
             r.raise_for_status()
 
             soup = BeautifulSoup(r.text, "html.parser")
-            # modelele sunt in div cu clasa "modelite"
             models_ul = soup.find("ul", class_="modelite")
             if not models_ul:
-                QMessageBox.warning(self, "Avertisment", "Nu s-au găsit modele pentru acest brand.")
+                QMessageBox.warning(self, "Avertisment", "Nu s-au găsit modele.")
                 return
 
             model_links = models_ul.find_all("a", class_="modeli")
-            if not model_links:
-                QMessageBox.warning(self, "Avertisment", "Nu s-au găsit modele în lista modelelor.")
-                return
-
             for model in model_links:
                 name_tag = model.find("strong")
                 name = name_tag.text.strip() if name_tag else model.text.strip()
                 href = model.get("href", "")
                 link = self.base_url + href
-                self.stack.append((name, link))
+                self.models.append((name, link))
                 self.list.addItem(name)
 
         except Exception as e:
             self.show_error(f"Eroare la încărcarea modelelor:\n{e}")
 
+
     def load_generations(self, link):
         self.title.setText("Selectează o generație")
         self.list.clear()
         self.current_level = "generation"
-        self.stack = self.stack[:1]  # păstrăm doar brand și model în stivă
-
-        self.generations = []  # asigur că există lista
+        self.generations = []
 
         try:
             response = requests.get(link, headers={"User-Agent": "Mozilla/5.0"})
@@ -350,12 +438,12 @@ class AllCarsPage(QWidget):
             soup = BeautifulSoup(response.text, "html.parser")
             outer_div = soup.find("div", id="outer")
             if not outer_div:
-                self.show_error("Nu am găsit div-ul cu id='outer'")
+                self.show_error("Div-ul cu id='outer' nu a fost găsit.")
                 return
 
             table = outer_div.find("table")
             if not table:
-                self.show_error("Nu am găsit tabelul în div-ul 'outer'")
+                self.show_error("Tabelul nu a fost găsit.")
                 return
 
             for tr in table.find_all("tr"):
@@ -373,10 +461,6 @@ class AllCarsPage(QWidget):
             if not self.generations:
                 self.show_error("Nu am găsit generații.")
 
-            else:
-                self.current_level = "generation"
-                self.stack.extend(self.generations)
-
         except Exception as e:
             self.show_error(f"Eroare la încărcarea generațiilor:\n{e}")
 
@@ -385,65 +469,54 @@ class AllCarsPage(QWidget):
         self.title.setText("Selectează o motorizare")
         self.list.clear()
         self.current_level = "variant"
-        self.stack = self.stack[:3]  # păstrăm brand, model, generație
         self.motorizations = []
 
         try:
             resp = requests.get(link, headers={"User-Agent": "Mozilla/5.0"})
             resp.raise_for_status()
+            soup = BeautifulSoup(resp.text, "html.parser")
+
+            outer_div = soup.find("div", id="outer")
+            if not outer_div:
+                self.show_error("Div-ul cu id='outer' nu a fost găsit.")
+                return
+
+            tables = outer_div.find_all("table")
+            carlist_table = None
+            for t in tables:
+                if "carlist" in t.get("class", []):
+                    carlist_table = t
+                    break
+
+            if carlist_table:
+                for tr in carlist_table.find_all("tr"):
+                    th = tr.find("th", class_="i")
+                    if th:
+                        a = th.find("a", href=True, title=True)
+                        if a:
+                            nume = a["title"]
+                            nume_curat = nume.split(" - ")[0].strip()
+                            href = a["href"].strip()
+                            full_link = self.base_url + href
+                            self.motorizations.append((nume_curat, full_link))
+                            self.list.addItem(nume_curat)
+
+                if not self.motorizations:
+                    QMessageBox.information(self, "Info", "Nu am găsit motorizări.")
+
+                return
+
+            # fallback: pagină unică de motorizare
+            h1 = soup.find("h1")
+            nume = h1.get_text(strip=True) if h1 else "Motorizare necunoscută"
+            self.motorizations.append((nume, link))
+            self.list.addItem(nume)
+
         except Exception as e:
-            QMessageBox.critical(self, "Eroare", f"Nu am putut descărca pagina:\n{e}")
-            return
+            self.show_error(f"Eroare la încărcarea motorizărilor:\n{e}")
 
-        soup = BeautifulSoup(resp.text, "html.parser")
-        outer_div = soup.find("div", id="outer")
-        if not outer_div:
-            QMessageBox.critical(self, "Eroare", "Div-ul cu id='outer' nu a fost găsit.")
-            return
 
-        # Căutăm tabelă cu clasa 'carlist'
-        tables = outer_div.find_all("table")
-        carlist_table = None
-        for t in tables:
-            if "carlist" in t.get("class", []):
-                carlist_table = t
-                break
-
-        if carlist_table:
-            # Dacă găsim motorizări multiple
-            for tr in carlist_table.find_all("tr"):
-                th = tr.find("th", class_="i")
-                if th:
-                    a = th.find("a", href=True, title=True)
-                    if a:
-                        nume = a["title"]
-                        nume_curat = nume.split(" - ")[0].strip()
-                        href = a["href"].strip()
-                        full_link = self.base_url + href
-                        self.motorizations.append((nume_curat, full_link))
-                        self.list.addItem(nume_curat)
-
-            if not self.motorizations:
-                QMessageBox.information(self, "Info", "Nu am găsit motorizări în această pagină.")
-            else:
-                self.stack.extend(self.motorizations)
-            return
-
-        # ⚠️ Fallback: considerăm că pagina este deja o motorizare unică
-        h1 = soup.find("h1")
-        if h1:
-            nume = h1.get_text(strip=True)
-        else:
-            nume = "Motorizare necunoscută"
-
-        self.motorizations.append((nume, link))
-        self.list.addItem(nume)
-        self.stack.append((nume, link))
-
-    def afiseaza_detalii(self, item: QListWidgetItem):
-        index = self.list_widget.row(item)
-        _, link = self.results[index]
-
+    def afiseaza_detalii(self, link):
         try:
             response = requests.get(link, headers={"User-Agent": "Mozilla/5.0"})
             response.raise_for_status()
@@ -462,7 +535,6 @@ class AllCarsPage(QWidget):
                 cells = row.find_all(["td", "th"])
                 if len(cells) >= 2:
                     key = cells[0].get_text(strip=True)
-                    # elimină toate span-urile din celula valoare
                     for span in cells[1].find_all("span"):
                         span.decompose()
                     value = cells[1].get_text(strip=True)
@@ -489,6 +561,7 @@ class AllCarsPage(QWidget):
         self.label_prod.setText(f"Început producție: {prod_start}")
         self.label_power.setText(f"Putere: {power}")
         self.label_weight.setText(f"Greutate (Kerb): {weight}")
+
 
 def show_error(self, message):
     QMessageBox.critical(self, "Eroare", message)
