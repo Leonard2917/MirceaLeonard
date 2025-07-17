@@ -9,6 +9,5 @@ Această aplicație extrage prețuri de pe anumite site-uri și le salvează în
 - SQLite
 
 ## Fisiere
-- `main.py` – rulează aplicația
-- `scraper.py` – conține logica de scraping
-- `database.py` – conectare la baza de date și salvare
+- `app.py` – rulează aplicația
+- restul de cod este pentru accesarea fiecarei pagini de pe siteul pe care am facut scraping
